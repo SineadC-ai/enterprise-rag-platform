@@ -79,6 +79,13 @@ POST /search
 ### RAG Chat
 POST /chat_rag
 { "question": "Who won the 1998 World Cup?", "top_k": 5 }
+### RAG Chat with document scoped search (retrieve context only from that specific document)
+POST /chat_rag
+{
+  "question": "Who won the World Cup in 1998?",
+  "top_k": 5,
+  "document_id": "worldcup98"
+}
 ### File Upload
 POST /ingest_file
 ## ■ Technologies Used

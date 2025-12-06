@@ -1,69 +1,112 @@
-from typing import List, Dict, Any
+from typing import List, Dict
 import hashlib
+import json
+
+import boto3
 
 from src.core.settings import get_settings
 
 
 class EmbeddingClient:
     """
-    Embedding client that supports:
-    - Fake embeddings (default, for local dev and architecture work)
-    - Real Bedrock embeddings (later, when USE_FAKE_EMBEDDINGS=false)
+    Embedding client with two modes:
 
-    Right now we only implement fake mode. The structure is ready for Bedrock.
+    - Fake embeddings (default for local development)
+    - Real embeddings via Amazon Titan (when USE_FAKE_EMBEDDINGS=false)
+
+    Public interface used by the pipeline:
+
+      - embed_text(text: str) -> List[float]
+      - embed_texts(texts: List[str]) -> List[List[float]]
+      - embed_chunks(chunks: List[Dict]) -> List[Dict]  # adds 'embedding' to each chunk
     """
 
     def __init__(self) -> None:
         settings = get_settings()
-        self.region = settings.aws_region
-        self.model_id = settings.bedrock_embedding_model_id
-        self.use_fake = settings.use_fake_embeddings
 
-        # Placeholder: when we turn on real Bedrock, we will initialize boto3 here.
-        # For now, we don't import boto3 to avoid credentials noise in fake mode.
+        self._use_fake = settings.use_fake_embeddings
+        self._region = settings.aws_region
+        self._model_id = settings.bedrock_embedding_model_id
 
-    def _fake_embedding(self, text: str, dim: int = 16) -> List[float]:
-        """
-        Deterministic fake embedding:
-        - Uses SHA-256 hash of the text
-        - Maps first `dim` bytes into floats in [-1, 1]
-        This is enough to exercise the pipeline and test vector DB wiring later.
-        """
-        h = hashlib.sha256(text.encode("utf-8")).digest()
-        # Take the first `dim` bytes and map each to [-1, 1]
-        vec = []
-        for b in h[:dim]:
-            # 0..255 -> -1..1
-            vec.append((b / 127.5) - 1.0)
-        return vec
+        if not self._use_fake:
+            self._client = boto3.client(
+                "bedrock-runtime",
+                region_name=self._region,
+            )
+
+    # -----------------------------
+    # Public methods
+    # -----------------------------
 
     def embed_text(self, text: str) -> List[float]:
         """
-        Return an embedding vector for a single text.
-        Currently fake-only (no AWS calls).
+        Returns a single embedding vector for the given text.
         """
-        if self.use_fake:
-            return self._fake_embedding(text)
+        if self._use_fake:
+            return self._fake_embed(text)
+        return self._bedrock_embed_single(text)
 
-        # Placeholder for future real Bedrock call
-        raise NotImplementedError(
-            "Real Bedrock embeddings not implemented yet. "
-            "Set USE_FAKE_EMBEDDINGS=true in your .env."
+    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+        """
+        Returns embeddings for a list of texts.
+        """
+        if self._use_fake:
+            return [self._fake_embed(t) for t in texts]
+        return [self._bedrock_embed_single(t) for t in texts]
+
+    def embed_chunks(self, chunks: List[Dict]) -> List[Dict]:
+        """
+        Takes a list of chunk dictionaries and returns a new list
+        where each chunk has an 'embedding' field added.
+
+        Expects each chunk to have a 'text' key.
+        """
+        texts = [c["text"] for c in chunks]
+        embeddings = self.embed_texts(texts)
+
+        enriched: List[Dict] = []
+        for chunk, emb in zip(chunks, embeddings):
+            # create a shallow copy so we don't mutate the input list
+            new_chunk = dict(chunk)
+            new_chunk["embedding"] = emb
+            enriched.append(new_chunk)
+
+        return enriched
+
+    # -----------------------------
+    # Fake embeddings (dev mode)
+    # -----------------------------
+
+    def _fake_embed(self, text: str, dim: int = 16) -> List[float]:
+        """
+        Deterministic fake embedding used for local development.
+        Produces a fixed-size vector based on a hash of the text.
+        """
+        h = hashlib.sha256(text.encode("utf-8")).digest()
+        # Take the first `dim` bytes and normalize to [0, 1]
+        return [b / 255.0 for b in h[:dim]]
+
+    # -----------------------------
+    # Bedrock Titan embeddings
+    # -----------------------------
+
+    def _bedrock_embed_single(self, text: str) -> List[float]:
+        """
+        Calls Amazon Titan Embeddings via Bedrock for a single text.
+        Model is expected to be: amazon.titan-embed-text-v1
+        """
+        body = {
+            "inputText": text
+        }
+
+        response = self._client.invoke_model(
+            modelId=self._model_id,
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps(body),
         )
 
-    def embed_chunks(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Take a list of chunk dicts (with 'text') and return a list where each
-        chunk is enriched with an 'embedding' field (list[float]).
-        """
-        enriched = []
-        for chunk in chunks:
-            text = chunk["text"]
-            vector = self.embed_text(text)
-            enriched.append(
-                {
-                    **chunk,
-                    "embedding": vector,
-                }
-            )
-        return enriched
+        result = json.loads(response["body"].read())
+
+        # Titan embedding models return: { "embedding": [float, ...] }
+        return result["embedding"]

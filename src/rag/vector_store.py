@@ -33,7 +33,7 @@ class PgVectorStore:
             chunk_id TEXT NOT NULL,
             chunk_index INTEGER NOT NULL,
             text TEXT NOT NULL,
-            embedding VECTOR(16)
+            embedding VECTOR(1536)
         );
 
         CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_document
@@ -65,7 +65,7 @@ class PgVectorStore:
                 (
                     chunk["document_id"],
                     chunk["chunk_id"],
-                    int(chunk["index"]),
+                    int(chunk["chunk_index"]),
                     chunk["text"],
                     chunk["embedding"],
                 )
@@ -151,3 +151,26 @@ class PgVectorStore:
                 }
             )
         return results
+		
+    def get_stats(self) -> dict:
+        """
+        Returns basic statistics about the embeddings store:
+        - number of chunks
+        - number of distinct documents
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM chunk_embeddings")
+                total_chunks = cur.fetchone()[0] or 0
+
+                cur.execute("SELECT COUNT(DISTINCT document_id) FROM chunk_embeddings")
+                total_docs = cur.fetchone()[0] or 0
+
+            return {
+                "num_chunks": int(total_chunks),
+                "num_documents": int(total_docs),
+            }
+        finally:
+            conn.close()
+

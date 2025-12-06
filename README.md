@@ -1,80 +1,102 @@
 # Enterprise RAG Platform
-A production-grade Retrieval-Augmented Generation (RAG) platform designed with AWS-native component## ■ Overview
-This platform provides:
-- A FastAPI-based backend for serving LLM-powered queries
-- AWS Bedrock integration for multi-model LLM inference
-- A PostgreSQL + pgvector vector store for document retrieval
-- Secure ingestion, chunking, and embedding pipelines
-- Retrieval orchestration with metadata filtering and reranking
-- Guardrails for PII protection, content filtering, and RBAC
-- Observability for latency, cost, and retrieval quality
-- Multi-tenant architecture for enterprise deployments
-The goal is to reflect real-world AI infrastructure patterns used at scale in AWS environments.
-
-## ■■ Architecture (High-Level)
-Client → FastAPI → RAG Orchestrator
- ↓
- Vector Store (pgvector)
- ↓
- Bedrock LLM (Claude / Llama / Mistral)
-Additional components include:
-- Ingestion pipeline (PDFs, docs, S3 objects)
-- Text preprocessing & chunking
-- Embedding generation
-- Hybrid retrieval (vector + keyword)
-- Guardrails (PII filters, safety checks)
-- Logging & cost monitoring
-- Multi-tenant access controls
-A full architecture diagram will be added in `/diagrams`.
+A production-grade Retrieval-Augmented Generation (RAG) platform designed with AWS-native
+components (Amazon Bedrock + Neon Postgres + pgvector + FastAPI).
+## ■ Overview
+This platform implements an end■to■end RAG workflow:
+- FastAPI backend exposing Chat, Search, RAG, and Ingestion APIs
+- Amazon Bedrock Titan Text for LLM responses
+- Amazon Bedrock Titan Embeddings for semantic embedding generation
+- Neon Postgres + pgvector used as the vector database
+- Document ingestion (raw text + PDF/TXT uploads)
+- Chunking engine with overlap
+- Embedding pipeline with metadata
+- Vector similarity search (with optional document filtering)
+- Retrieval-Augmented Generation pipeline that injects context before calling the LLM
+## ■ High■Level Architecture
+```mermaid
+flowchart LR
+Client --> API[FastAPI Service]
+subgraph Pipeline[RAG Pipeline]
+INGEST[Ingest + Chunk]
+EMBED[Embed Chunks]
+SEARCH[Vector Search]
+RAG[RAG Assembly]
+end
+API --> INGEST
+INGEST --> EMBED
+EMBED --> VECDB[(Neon Postgres + pgvector)]
+API --> SEARCH
+SEARCH --> VECDB
+RAG --> LLM[Bedrock Titan Text]
+API --> RAG
+```
+## ■ Architecture Description
+Flow: Client → FastAPI → RAG Pipeline → pgvector → Bedrock Titan
+Included components:
+- Ingestion pipeline (PDF/TXT + raw JSON)
+- Text preprocessing + chunking
+- Embedding generation (Titan Embeddings)
+- Vector similarity search (pgvector)
+- RAG orchestration using retrieved context
+- Optional toggles for stubbed/fake LLM and embeddings
+- Health endpoints, stats, and debugging routes
 ## ■ Project Structure
 src/
- api/ # FastAPI application and routing
- core/ # Configuration, settings, environment management
- llm/ # LLM client wrappers (Bedrock, vLLM, OpenAI)
-tests/ # Unit and integration tests
-diagrams/ # Architecture diagrams (PlantUML, PNG, SVG)
+api/ # FastAPI routes and Pydantic models
+core/ # Pipeline orchestrator, settings, file loader
+rag/ # Chunking + vector store logic
+llm/ # Bedrock LLM + Embedding clients
+scripts/ # Tools and smoke tests
 .env.example # Environment variable template
 requirements.txt # Python dependencies
-## ■ Setup Instructions
-1. Install dependencies:
- pip install -r requirements.txt
-2. Create your .env file:
- cp .env.example .env
-3. Run the FastAPI server:
- uvicorn src.api.server:app --reload
-Health check endpoint:
-GET http://localhost:8000/health
+## ■ Environment Configuration
+Example `.env` values:
+USE_BEDROCK_LLM=true
+USE_FAKE_EMBEDDINGS=false
+PERSIST_EMBEDDINGS=true
+BEDROCK_LLM_MODEL_ID=amazon.titan-text-lite-v1
+BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v1
+DATABASE_URL=postgresql://:@/
+## ■ Vector Database Schema (pgvector)
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+document_id TEXT,
+chunk_id TEXT,
+chunk_index INT,
+embedding VECTOR(1536),
+text TEXT
+);
+## ■ API Endpoints
+### Chat (LLM only)
+POST /chat
+{ "question": "Say hello" }
+### Ingest + Embed
+POST /ingest_and_embed
+{ "document_id": "worldcup98", "text": "France won the World Cup in 1998." }
+### Search
+POST /search
+{ "query": "Who won in 1998?", "top_k": 5 }
+### RAG Chat
+POST /chat_rag
+{ "question": "Who won the 1998 World Cup?", "top_k": 5 }
+### File Upload
+POST /ingest_file
 ## ■ Technologies Used
-- AWS Bedrock – High-performance LLM inference (Claude, Llama, Mistral)
-- FastAPI – Lightweight async microservice framework
-- PostgreSQL + pgvector – Vector search for document retrieval
-- Python – Core platform logic
-- Uvicorn – ASGI server for FastAPI
-- boto3 – AWS SDK for Bedrock integration
-- Docker (optional) – Container-based deployment
-- GitHub Actions (optional) – CI/CD automation
-## ■■ Feature Roadmap
-Completed / In Progress:
-- Project structure initialization
-- FastAPI health check endpoint
-Planned:
-- Bedrock LLM client integration
-- Document ingestion pipeline
-- Text preprocessing & chunking
-- Embedding generation pipeline
-- pgvector vector store integration
+- AWS Bedrock — Titan Text + Titan Embeddings
+- FastAPI — high■performance microservice framework
+- Neon Postgres — serverless Postgres
+- pgvector — similarity search on embeddings
+- Python — service + orchestration
+- Uvicorn — ASGI server
+- boto3 — Bedrock SDK
+## ■ Feature Roadmap (Future Enhancements)
 - Hybrid retrieval (vector + keyword)
-- RAG orchestration layer
-- Guardrails (PII removal, safety checks, RBAC)
-- Observability (latency, token usage, cost tracking)
-- Multi-tenant architecture
-- Docker packaging & deployment
-- CI/CD pipeline (GitHub Actions)
+- Guardrails (PII filtering)
+- Observability dashboards (latency, vector DB stats, token usage)
+- Multi■tenant access controls
+- Docker packaging
+- CI/CD automation
 ## ■ License
-MIT License — free to use for personal or commercial purposes.
-## ■ Contributions
-This project is built as a demonstration of enterprise GenAI architecture patterns.
-Contributions and improvements are welcome through pull requests.
+MIT License
 ## ■ Contact
-If you are reviewing this project for professional consulting services or hiring purposes,
-feel free to reach out via GitHub or LinkedIn. https://www.linkedin.com/in/sinead-c-5543b31/
+https://www.linkedin.com/in/sinead-c-5543b31/

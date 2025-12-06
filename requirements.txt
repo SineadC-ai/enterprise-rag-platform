@@ -4,3 +4,5 @@ boto3
 python-dotenv
 pydantic
 psycopg2-binary
+python-multipart
+pypdf

@@ -1,0 +1,220 @@
+✅ 1. /health
+
+GET → /health
+
+No JSON body.
+
+Expected:
+
+{
+  "status": "ok",
+  "environment": "local",
+  "region": "us-east-1"
+}
+
+✅ 2. /ingest
+
+Stores a raw text document without embeddings.
+
+POST → /ingest
+{
+  "document_id": "test_doc_1",
+  "text": "This is a simple test document. It talks about data engineering and cloud computing.",
+  "source": "manual",
+  "user_id": "user123",
+  "filename": "test_doc_1.txt"
+}
+
+
+Expected response:
+
+{
+  "status": "document stored",
+  "document_id": "test_doc_1"
+}
+
+✅ 3. /ingest_and_embed
+
+This endpoint runs chunking → embeddings → vector DB insert.
+
+POST → /ingest_and_embed
+
+Use this JSON:
+
+{
+  "document_id": "worldcup_1998",
+  "text": "France won the World Cup in 1998. Zidane scored two goals in the final.",
+  "source": "test_input",
+  "chunk_size": 300,
+  "overlap": 50,
+  "user_id": "user123",
+  "filename": "worldcup_1998.txt"
+}
+
+Expected result (example)
+{
+  "document_id": "worldcup_1998",
+  "num_chunks": 1,
+  "embedding_dim": 1536
+}
+
+
+(Your embedding_dim may differ depending on model.)
+
+✅ 4. /documents
+
+Shows everything stored in the in-memory doc store (NOT the vector DB).
+
+GET → /documents
+
+No JSON needed.
+
+Expected (example):
+
+[
+  {
+    "document_id": "test_doc_1",
+    "text": "This is a simple test document...",
+    "source": "manual",
+    "user_id": "user123",
+    "filename": "test_doc_1.txt",
+    "updated_at": "2025-01-01T12:00:00.000Z"
+  },
+  {
+    "document_id": "worldcup_1998",
+    "text": "France won the World Cup in 1998...",
+    "source": "test_input",
+    "user_id": "user123",
+    "filename": "worldcup_1998.txt",
+    "updated_at": "..."
+  }
+]
+
+✅ 5. /search
+
+This tests pgvector semantic search.
+
+Try:
+
+POST → /search
+{
+  "query": "Who won the world cup?",
+  "top_k": 5
+}
+
+
+Expected (example):
+
+{
+  "results": [
+    {
+      "document_id": "worldcup_1998",
+      "chunk_id": "worldcup_1998_chunk_0",
+      "chunk_index": 0,
+      "text": "France won the World Cup in 1998...",
+      "score": 0.77
+    }
+  ]
+}
+
+✅ 6. /chat
+
+This is non-RAG LLM chat (direct LLM call).
+
+POST → /chat
+{
+  "question": "Give me a fun fact about soccer.",
+  "user_id": "user123"
+}
+
+
+Expected:
+
+A normal Bedrock Titan LLM answer (string).
+
+✅ 7. /chat_rag
+
+This is full RAG (retrieval-augmented generation).
+
+Ask something that IS in your embeddings:
+
+POST → /chat_rag
+{
+  "question": "Who won the world cup in 1998?",
+  "top_k": 5
+}
+
+
+Expected answer:
+
+{
+  "answer": "France won the World Cup in 1998.",
+  "context": [...]
+}
+
+
+Ask something NOT in your embeddings:
+
+{
+  "question": "Who won the world cup in 1994?",
+  "top_k": 5
+}
+
+
+Expected (because context won't match 1994):
+
+A hallucinated answer OR
+
+A fallback answer depending on your model prompt
+(You chose NOT to add guardrails — totally fine.)
+
+✅ 8. /ingest_file
+
+To test this in Swagger:
+
+Choose a .txt file with simple content
+
+Or a .pdf that PyPDF can read
+
+No JSON body — just upload a file.
+
+Example content:
+
+FastAPI is a fast Python web framework designed for APIs.
+
+
+Expected:
+
+{
+  "document_id": "myfile.txt",
+  "num_chunks": 1,
+  "embedding_dim": 1536
+}
+
+✅ 9. /debug/health_rag
+
+This hits the vector DB and checks:
+
+chunk count
+
+document count
+
+flags (fake embeddings, bedrock status)
+
+GET → /debug/health_rag
+
+Expected output example:
+
+{
+  "status": "ok",
+  "num_chunks": 5,
+  "num_documents": 2,
+  "use_fake_embeddings": false,
+  "use_bedrock_llm": true
+}
+
+Want me to generate a one-page RAG test script you can save as test_calls.http for VSCode or Postman?
+
+If yes, say “Generate HTTP test script”.
+
+ChatGPT can make mistakes. Check important info.

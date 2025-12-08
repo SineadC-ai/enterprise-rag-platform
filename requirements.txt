@@ -6,3 +6,9 @@ pydantic
 psycopg2-binary
 python-multipart
 pypdf
+ragas
+datasets
+opentelemetry-sdk 
+opentelemetry-instrumentation-fastapi
+
+

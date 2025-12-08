@@ -1,6 +1,7 @@
 import os
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from typing import List, Dict, Optional
 
 # Load environment variables from .env at project root
 load_dotenv()
@@ -37,6 +38,10 @@ class Settings(BaseModel):
     use_bedrock_llm: bool = (
         os.getenv("USE_BEDROCK_LLM", "false").lower() == "true"
     )
+    #Bedrock Guardrails configuration
+    bedrock_guardrail_id: Optional[str] = os.getenv("BEDROCK_GUARDRAIL_ID")
+    bedrock_guardrail_version: Optional[str] = os.getenv("BEDROCK_GUARDRAIL_VERSION")
+    bedrock_guardrail_enabled: bool = os.getenv("BEDROCK_GUARDRAIL_ENABLED", "false" ).lower() == "true"
 
     # ---------- Data / Vector store ----------
 

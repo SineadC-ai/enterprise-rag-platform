@@ -8,9 +8,18 @@ from src.core.pipeline import process_document, search_similar_chunks
 from src.core.file_loader import load_text_from_bytes
 from src.rag.vector_store import PgVectorStore
 from fastapi.middleware.cors import CORSMiddleware
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 import time
+import logging
+from src.core.logging_config import setup_logging
+from src.core.otel_config import setup_tracing
 
+setup_logging()
+#setup_tracing() #will display on bash console for now. 
 app = FastAPI(title="Enterprise RAG Platform", version="0.4.0")
+
+FastAPIInstrumentor.instrument_app(app)
+
 
 # --- CORS (needed for browser frontends) ---
 app.add_middleware(

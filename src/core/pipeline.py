@@ -1,4 +1,5 @@
 import time
+import logging
 from typing import List, Dict, Optional
 
 from src.core.settings import get_settings
@@ -9,6 +10,10 @@ from src.rag.chunking import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_CHUNK_OVERLAP,
 )
+# from src.core.logging_config import setup_logging
+# setup_logging()
+
+logger = logging.getLogger(__name__) 
 
 
 def chunk_and_embed_document(
@@ -89,7 +94,10 @@ def process_document(
     """
     settings = get_settings()
 
+    t0 = time.time() 
+
     # Chunk + embed
+    t_embed_start = time.time()  
     enriched_chunks = chunk_and_embed_document(
         document_id=document_id,
         text=text,
@@ -99,15 +107,29 @@ def process_document(
         user_id=user_id,
         filename=filename,
     )
+    t_embed_end = time.time()  
 
     # Persist embeddings if enabled
+    t_persist_start = time.time()  
     if settings.persist_embeddings:
         store = PgVectorStore()
         store.upsert_embeddings(enriched_chunks)
+    t_persist_end = time.time() 
+
+    total_time = time.time() - t0 
 
     embedding_dim = 0
     if enriched_chunks and "embedding" in enriched_chunks[0]:
         embedding_dim = len(enriched_chunks[0]["embedding"])
+
+    logger.info(
+        "process_document timings "
+        f"document_id={document_id} "
+        f"num_chunks={len(enriched_chunks)} "
+        f"embedding_ms={(t_embed_end - t_embed_start) * 1000:.2f} "
+        f"persist_ms={(t_persist_end - t_persist_start) * 1000:.2f} "
+        f"total_ms={total_time * 1000:.2f}"
+    )
 
     return {
         "document_id": document_id,
@@ -130,13 +152,31 @@ def search_similar_chunks(
         document_id, chunk_id, chunk_index, text, score
     """
     embedding_client = EmbeddingClient()
+
+    t_embed_start = time.time()  # NEW
     query_embedding = embedding_client.embed_text(query)
+    t_embed_end = time.time()  # NEW
 
     store = PgVectorStore()
+
+    t_search_start = time.time()  # NEW
     results = store.search_similar_chunks(
         query_embedding=query_embedding,
         top_k=top_k,
         document_id=document_id,
+    )
+    t_search_end = time.time()  # NEW
+
+    total_time = t_search_end - t_embed_start  # NEW
+
+    logger.info(
+        "search_similar_chunks timings "
+        f"top_k={top_k} "
+        f"document_id={document_id} "
+        f"embedding_ms={(t_embed_end - t_embed_start) * 1000:.2f} "
+        f"search_ms={(t_search_end - t_search_start) * 1000:.2f} "
+        f"total_ms={total_time * 1000:.2f} "
+        f"num_results={len(results)}"
     )
 
     return results

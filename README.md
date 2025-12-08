@@ -79,7 +79,8 @@ POST /search
 ### RAG Chat
 POST /chat_rag
 { "question": "Who won the 1998 World Cup?", "top_k": 5 }
-### RAG Chat with document scoped search (retrieve context only from that specific document)
+### RAG Chat with document scoped search
+(retrieve context only from that specific document)
 POST /chat_rag
 {
   "question": "Who won the World Cup in 1998?",

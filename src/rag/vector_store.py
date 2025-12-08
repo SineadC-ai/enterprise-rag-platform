@@ -173,4 +173,48 @@ class PgVectorStore:
             }
         finally:
             conn.close()
+			
+    def get_chunks_for_document(self, document_id: str, limit: int = 200):
+        """
+        Return stored chunks for a given document_id for debugging.
+        Includes basic text info and embedding dimension.
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT document_id,
+                           chunk_id,
+                           chunk_index,
+                           text,
+                           embedding
+                    FROM chunk_embeddings
+                    WHERE document_id = %s
+                    ORDER BY chunk_index ASC
+                    LIMIT %s
+                    """,
+                    (document_id, limit),
+                )
+                rows = cur.fetchall()
+
+            chunks = []
+            for row in rows:
+                doc_id, chunk_id, chunk_index, text, embedding = row
+                embedding_dim = len(embedding) if embedding is not None else None
+                chunks.append(
+                    {
+                        "document_id": doc_id,
+                        "chunk_id": chunk_id,
+                        "chunk_index": int(chunk_index),
+                        "text": text,
+                        "text_length": len(text) if text else 0,
+                        "embedding_dim": embedding_dim,
+                    }
+                )
+
+            return chunks
+        finally:
+            conn.close()
+
 

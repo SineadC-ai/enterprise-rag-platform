@@ -101,6 +101,35 @@ class RagHealth(BaseModel):
     use_fake_embeddings: bool
     use_bedrock_llm: bool
 
+class DebugChunk(BaseModel):
+    document_id: str
+    chunk_id: str
+    chunk_index: int
+    text_preview: str
+    text_length: int
+    embedding_dim: int | None = None
+
+
+class DebugDocumentChunksResponse(BaseModel):
+    document_id: str
+    limit: int
+    total_chunks_returned: int
+    chunks: List[DebugChunk]
+
+
+class DebugSearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
+    document_id: Optional[str] = None
+
+
+class DebugSearchResponse(BaseModel):
+    query: str
+    top_k: int
+    document_id: Optional[str] = None
+    results: List[SearchResult]
+
+
 # ---------- Dependencies ----------
 
 
@@ -267,59 +296,77 @@ def chat_rag(
     llm: LLMClient = Depends(get_llm_client),
 ):
     """
-    Retrieval-augmented chat:
-    - Retrieve similar chunks
-    - Build a concise context
-    - Ask the LLM to answer using only that context
+    RAG-style chat:
+    1) Retrieve similar chunks
+    2) Build context
+    3) Call LLM with context + question
+
+    This version also logs simple timing information for retrieval and LLM.
     """
-    import time
 
-    start_time = time.time()
+    t_start = time.time()
 
-    # Retrieval
+    # 1) Retrieval
+    t_retrieval_start = time.time()
     retrieved = search_similar_chunks(
         query=request.question,
         top_k=request.top_k,
         document_id=request.document_id,
     )
+    t_retrieval_end = time.time()
 
-    # Limit how many chunks go into the prompt
-    max_chunks_for_prompt = 8
-    trimmed_chunks = retrieved[:max_chunks_for_prompt]
+    # Guardrail: no context found in vector store
+    if not retrieved:
+        t_llm_start = time.time()
+        fallback_prompt = (
+            "No relevant context was found in the knowledge base.\n\n"
+            f"User question: {request.question}\n\n"
+            "Answer based on general knowledge. "
+            "If you do not know the answer, say that you do not know."
+        )
+        answer = llm.chat(prompt=fallback_prompt, user_id=request.user_id)
+        t_llm_end = time.time()
+        t_end = time.time()
 
-    # Build numbered context
-    context_lines = []
-    for idx, r in enumerate(trimmed_chunks):
-        label = f"[{idx + 1}]"
-        context_lines.append(
-            f"{label} (doc={r['document_id']}, chunk={r['chunk_id']}): {r['text']}"
+        # Simple timing log
+        print(
+            "[chat_rag] no-context "
+            f"total={t_end - t_start:.3f}s "
+            f"retrieval={t_retrieval_end - t_retrieval_start:.3f}s "
+            f"llm={t_llm_end - t_llm_start:.3f}s"
         )
 
-    context_text = "\n\n".join(context_lines).strip()
+        return RagChatResponse(answer=answer, context=[])
 
-    if context_text:
-        prompt = (
-            "You are a precise assistant that answers questions using only the context provided.\n"
-            "If the answer is clearly stated in the context, answer it directly and concisely.\n"
-            "If the context does not contain the answer, say: \"I don't know based on the provided context.\"\n"
-            "Do not describe the context or limitations, just answer the question.\n\n"
-            "Context passages:\n"
-            f"{context_text}\n\n"
-            "Question:\n"
-            f"{request.question}\n\n"
-            "Answer (do not add any extra sections or headings):"
-        )
-    else:
-        prompt = (
-            "There is no supporting context available for this question.\n"
-            "If the question requires specific facts, say: \"I don't know based on the provided context.\"\n\n"
-            f"Question:\n{request.question}\n\n"
-            "Answer:"
-        )
+    # 2) Build context text from retrieved chunks
+    context_text = "\n\n".join(
+        f"[{r['document_id']} / {r['chunk_id']}] {r['text']}"
+        for r in retrieved
+    )
 
+    prompt = (
+        "Context:\n"
+        f"{context_text}\n\n"
+        "Question:\n"
+        f"{request.question}\n\n"
+        "Answer the question using only the information in the context above. "
+        "If the context does not contain the answer, say that the information "
+        "is not available."
+    )
+
+    # 3) LLM call
+    t_llm_start = time.time()
     answer = llm.chat(prompt=prompt, user_id=request.user_id)
+    t_llm_end = time.time()
+    t_end = time.time()
 
-    latency_ms = (time.time() - start_time) * 1000.0
+    # Simple timing log
+    print(
+        "[chat_rag] ok "
+        f"total={t_end - t_start:.3f}s "
+        f"retrieval={t_retrieval_end - t_retrieval_start:.3f}s "
+        f"llm={t_llm_end - t_llm_start:.3f}s"
+    )
 
     api_context = [
         SearchResult(
@@ -336,6 +383,7 @@ def chat_rag(
         answer=answer,
         context=api_context,
     )
+
 
 @app.get("/debug/config", response_model=DebugConfig)
 def debug_config(settings: Settings = Depends(get_settings)):
@@ -380,3 +428,60 @@ def debug_health_rag(settings: Settings = Depends(get_settings)):
         use_bedrock_llm=settings.use_bedrock_llm,
     )
 
+@app.get("/debug/document_chunks/{document_id}", response_model=DebugDocumentChunksResponse)
+def debug_document_chunks(document_id: str, limit: int = 200):
+    """
+    Return stored chunks for a single document for debugging.
+    Helps verify chunking, ordering, and embedding dimensions.
+    """
+    store = PgVectorStore()
+    rows = store.get_chunks_for_document(document_id=document_id, limit=limit)
+
+    debug_chunks = [
+        DebugChunk(
+            document_id=row["document_id"],
+            chunk_id=row["chunk_id"],
+            chunk_index=row["chunk_index"],
+            text_preview=row["text"][:200],
+            text_length=row["text_length"],
+            embedding_dim=row["embedding_dim"],
+        )
+        for row in rows
+    ]
+
+    return DebugDocumentChunksResponse(
+        document_id=document_id,
+        limit=limit,
+        total_chunks_returned=len(debug_chunks),
+        chunks=debug_chunks,
+    )
+
+@app.post("/debug/search_raw", response_model=DebugSearchResponse)
+def debug_search_raw(request: DebugSearchRequest):
+    """
+    Run a search and return the same structure as /search, plus echo query + filters.
+    Useful for debugging retrieval behavior.
+    """
+    results = search_similar_chunks(
+        query=request.query,
+        top_k=request.top_k,
+        document_id=request.document_id,
+    )
+
+    api_results = [
+        SearchResult(
+            document_id=r["document_id"],
+            chunk_id=r["chunk_id"],
+            chunk_index=r["chunk_index"],
+            text=r["text"],
+            score=r["score"],
+        )
+        for r in results
+    ]
+
+    return DebugSearchResponse(
+        query=request.query,
+        top_k=request.top_k,
+        document_id=request.document_id,
+        results=api_results,
+    )

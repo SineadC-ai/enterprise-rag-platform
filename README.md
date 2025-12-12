@@ -12,6 +12,11 @@ This platform implements an end to end RAG workflow:
 - Embedding pipeline with metadata  
 - Vector similarity search (with optional document filtering)  
 - Retrieval-Augmented Generation pipeline that injects context before calling the LLM  
+## Use of AI-Assisted Development
+Parts of this project were developed with the assistance of AI-based code generation tools.
+All generated code was reviewed, tested, and integrated by the author to ensure correctness,
+security, and alignment with the overall system architecture.
+The author retains full ownership and responsibility for the codebase.
 ## ■ High Level Architecture
 ```mermaid
 flowchart LR
@@ -140,7 +145,31 @@ this foundation would typically be extended with:
 
 The goal of this project is to stay close to these enterprise patterns while keeping
 the implementation small and easy to understand for learning and demonstration purposes.
-## ■ License  
-MIT License  
+
+
+## Licensing
+
+This project is dual-licensed:
+
+### Open Source License
+This software is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+You may use, modify, and redistribute this software under the terms of the AGPL-3.0.
+If you run this software as part of a networked service and modify it, you must
+make the complete corresponding source code available under the same license.
+
+### Commercial License
+A **commercial license is required** for:
+
+- Proprietary or closed-source use
+- Internal enterprise deployments
+- SaaS or hosted offerings
+- Consulting, resale, or revenue-generating use cases
+
+Commercial licenses allow use without the AGPL-3.0 copyleft requirements.
+
+For commercial licensing inquiries, contact:
+**sineadcrook@gmail.com**
+
 ## ■ Contact  
 https://www.linkedin.com/in/sinead-c-5543b31/

@@ -168,8 +168,6 @@ A **commercial license is required** for:
 
 Commercial licenses allow use without the AGPL-3.0 copyleft requirements.
 
-For commercial licensing inquiries, contact:
-**sineadcrook@gmail.com**
 
 ## ■ Contact  
 https://www.linkedin.com/in/sinead-c-5543b31/
